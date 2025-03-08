@@ -1,6 +1,8 @@
 use git2::{DiffOptions, Error, Repository};
 
-fn print_pretty_diff(repo: &Repository, context_lines: u32) -> Result<(), Error> {
+fn get_pretty_diff(repo: &Repository, context_lines: u32) -> Result<String, Error> {
+    let mut output = String::new();
+
     // Retrieve the index from the repository
     let index = repo.index()?;
     // Retrieve the HEAD commit
@@ -36,27 +38,31 @@ fn print_pretty_diff(repo: &Repository, context_lines: u32) -> Result<(), Error>
             // If this is a different file than what we've been processing
             if current_file.as_ref() != Some(&path_str) {
                 current_file = Some(path_str);
-                println!("\npath: {}", path.display());
+                output.push_str(&format!("\npath: {}\n", path.display()));
             }
         }
-
-        // Print lines based on their origin, preserving the diff symbols
+        // Append lines based on their origin, preserving the diff symbols
         match line.origin() {
             '+' | '-' | ' ' => {
-                // Print the line with its origin character (+ for addition, - for deletion, space for context)
-                print!("{} {}", line.origin(), line_content);
+                // Append the line with its origin character to output string
+                output.push(line.origin());
+                output.push(' ');
+                output.push_str(&line_content);
             }
             _ => {} // Skip other lines (file headers, etc.)
         }
-
         true
     })?;
 
-    Ok(())
+    Ok(output)
 }
 
 fn main() -> Result<(), Error> {
     let repo = Repository::open("./")?;
 
-    print_pretty_diff(&repo, 3)
+    let diff_string = get_pretty_diff(&repo, 3)?;
+
+    println!("{}", diff_string);
+
+    Ok(())
 }
