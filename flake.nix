@@ -17,15 +17,17 @@
       in pkgs.mkShell {
         packages = with pkgs; [
           cargo
-          rustup
           rustc
           clippy
           rust-analyzer
           rustfmt
           git
           toybox
+          openssl
+          pkg-config
         ];
 
+        RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
         };
     };
 }
