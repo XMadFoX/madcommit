@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+genai = "0.1.23"
 git2 = "0.20.0"
 log = "0.4.26"
 simple_logger = "5.0.0"
+tokio = { version = "1.44.0", features = ["full"] }
