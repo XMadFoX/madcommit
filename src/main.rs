@@ -1,5 +1,6 @@
 use git2::{DiffOptions, Error, Repository};
 
+use simple_logger::SimpleLogger;
 fn get_pretty_diff(repo: &Repository, context_lines: u32) -> Result<String, Error> {
     let mut output = String::new();
 
@@ -58,6 +59,7 @@ fn get_pretty_diff(repo: &Repository, context_lines: u32) -> Result<String, Erro
 }
 
 fn main() -> Result<(), Error> {
+    SimpleLogger::new().env().init().unwrap();
     let repo = Repository::open("./")?;
 
     let diff_string = get_pretty_diff(&repo, 3)?;
