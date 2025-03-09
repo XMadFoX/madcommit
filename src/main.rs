@@ -1,11 +1,14 @@
-use std::fs;
+use std::fs::{self, File};
+use std::io::{self, Write};
+use std::process::Command;
 
-use git2::{DiffOptions, Error, Repository};
+use git2::{DiffOptions, Error, Repository, Signature};
 
 use genai::chat::printer::{print_chat_stream, PrintChatStreamOptions};
 use genai::chat::{ChatMessage, ChatRequest};
 use genai::Client;
 use simple_logger::SimpleLogger;
+use tempfile::NamedTempFile;
 
 const MODEL: &str = "gpt-4o-mini";
 
@@ -97,5 +100,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let commit_msg = print_chat_stream(chat_res, Some(&print_options)).await?;
     log::debug!("Result:\n{commit_msg}");
 
+    let mut index = repo.index()?;
+    index.write()?;
+
+    let oid = index.write_tree()?;
+    let tree = repo.find_tree(oid)?;
+    let head = repo.head()?;
+    let parent_commit = head.peel_to_commit()?;
+    let signature = get_default_signature(&repo)?;
+
+    let commit_message = get_commit_message_interactively(&commit_msg)?;
+    repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        &commit_message,
+        &tree,
+        &[&parent_commit],
+    )?;
+
     Ok(())
+}
+
+fn get_default_signature(repo: &Repository) -> Result<Signature, Box<dyn std::error::Error>> {
+    let config = repo.config()?;
+    let name = config.get_string("user.name")?;
+    let email = config.get_string("user.email")?;
+    let signature = Signature::now(&name, &email)?;
+    Ok(signature)
+}
+
+fn get_commit_message_interactively(initial_message: &str) -> io::Result<String> {
+    // Create a temporary file with the initial commit message
+    let mut temp_file = NamedTempFile::new()?;
+    writeln!(temp_file, "{}", initial_message)?;
+    temp_file.flush()?;
+
+    // Determine the editor to use
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+
+    // Launch the editor to edit the commit message
+    Command::new(editor).arg(temp_file.path()).status()?;
+
+    // Read the edited commit message
+    let mut file = File::open(temp_file.path())?;
+    let mut edited_message = String::new();
+    io::Read::read_to_string(&mut file, &mut edited_message)?;
+
+    Ok(edited_message)
 }
