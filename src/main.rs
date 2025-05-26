@@ -10,11 +10,11 @@ use config::OutputFormat;
 use genai::chat::printer::{print_chat_stream, PrintChatStreamOptions};
 use genai::chat::{ChatMessage, ChatRequest};
 use genai::Client;
-use simple_logger::SimpleLogger;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    SimpleLogger::new().env().init().unwrap();
+    env_logger::init();
+    log::debug!("Version: {}", env!("CARGO_PKG_VERSION"));
 
     let app_config = config::load_config()?;
 
