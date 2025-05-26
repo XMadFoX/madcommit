@@ -5,6 +5,8 @@ use git2::Repository;
 mod config;
 mod git;
 
+use config::OutputFormat;
+
 use genai::chat::printer::{print_chat_stream, PrintChatStreamOptions};
 use genai::chat::{ChatMessage, ChatRequest};
 use genai::Client;
@@ -45,9 +47,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let commit_msg = print_chat_stream(chat_res, Some(&print_options)).await?;
     log::debug!("Result:\n{commit_msg}");
 
-    // Get the commit message interactively and create the commit
-    let commit_message = git::get_commit_message_interactively(&commit_msg)?;
-    git::create_commit(&repo, &commit_message)?;
+    match app_config.output_format {
+        OutputFormat::Plain => {
+            // already streamed
+        }
+        OutputFormat::GitInteractiveCommit => {
+            // Get the commit message interactively and create the commit
+            let commit_message = git::get_commit_message_interactively(&commit_msg)?;
+            git::create_commit(&repo, &commit_message)?;
+        }
+    }
 
     Ok(())
 }

@@ -1,12 +1,20 @@
 use ::config::{Config, File};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+use toml;
+
+#[derive(Debug, Deserialize, Serialize, Clone, ValueEnum)]
+pub enum OutputFormat {
+    Plain,
+    GitInteractiveCommit,
+}
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AppConfig {
     pub model: String,
     pub template_path: String,
+    pub output_format: OutputFormat,
 }
 
 impl Default for AppConfig {
@@ -14,6 +22,7 @@ impl Default for AppConfig {
         AppConfig {
             model: "gpt-4.1-nano".to_string(),
             template_path: "template.md".to_string(),
+            output_format: OutputFormat::GitInteractiveCommit,
         }
     }
 }
@@ -26,6 +35,9 @@ pub struct Cli {
 
     #[arg(short, long)]
     pub model: Option<String>,
+
+    #[arg(short, long, value_enum)]
+    pub output: Option<OutputFormat>,
 }
 
 pub fn load_config() -> Result<AppConfig, Box<dyn std::error::Error>> {
@@ -61,7 +73,9 @@ pub fn load_config() -> Result<AppConfig, Box<dyn std::error::Error>> {
     if let Some(model) = cli.model {
         app_config.model = model;
     }
+    if let Some(output_format) = cli.output {
+        app_config.output_format = output_format;
+    }
 
     Ok(app_config)
 }
-
