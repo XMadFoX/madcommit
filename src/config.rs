@@ -33,16 +33,21 @@ pub struct Cli {
     #[arg(short, long, value_name = "FILE")]
     pub template: Option<String>,
 
-    #[arg(short, long)]
+    #[arg(long)]
     pub model: Option<String>,
 
     #[arg(short, long, value_enum)]
     pub output: Option<OutputFormat>,
+
+    #[arg(
+        short,
+        long,
+        help = "Custom context to help AI generate a better commit message"
+    )]
+    pub message: Option<String>,
 }
 
-pub fn load_config() -> Result<AppConfig, Box<dyn std::error::Error>> {
-    let cli = Cli::parse();
-
+pub fn load_config(cli: &Cli) -> Result<AppConfig, Box<dyn std::error::Error>> {
     // Determine config file path
     let project_dirs = ProjectDirs::from("dev", "xmadfox", "madcommit")
         .ok_or("Could not determine project directories")?;
@@ -67,14 +72,18 @@ pub fn load_config() -> Result<AppConfig, Box<dyn std::error::Error>> {
     let mut app_config: AppConfig = settings.try_deserialize()?;
 
     // 4. Override with CLI arguments
-    if let Some(template_path) = cli.template {
-        app_config.template_path = template_path;
+    if let Some(template_path) = &cli.template {
+        app_config.template_path = template_path.clone();
     }
-    if let Some(model) = cli.model {
-        app_config.model = model;
+    if let Some(model) = &cli.model {
+        app_config.model = model.clone();
     }
-    if let Some(output_format) = cli.output {
-        app_config.output_format = output_format;
+    if let Some(output_format) = &cli.output {
+        app_config.output_format = output_format.clone();
+    }
+    if let Some(_message) = &cli.message {
+        // This message is not part of AppConfig, so no assignment here.
+        // It's handled in main.rs
     }
 
     Ok(app_config)

@@ -5,7 +5,8 @@ use git2::Repository;
 mod config;
 mod git;
 
-use config::OutputFormat;
+use clap::Parser;
+use config::{Cli, OutputFormat};
 
 use genai::chat::printer::{print_chat_stream, PrintChatStreamOptions};
 use genai::chat::{ChatMessage, ChatRequest};
@@ -16,7 +17,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     log::debug!("Version: {}", env!("CARGO_PKG_VERSION"));
 
-    let app_config = config::load_config()?;
+    let cli = Cli::parse();
+    let app_config = config::load_config(&cli)?;
 
     let repo = Repository::open("./")?;
 
@@ -24,17 +26,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let template = fs::read_to_string(&app_config.template_path)?;
 
-    let chat_req = ChatRequest::new(vec![
+    let mut messages = vec![
         ChatMessage::system(template),
         ChatMessage::user(&diff_string),
-    ]);
+    ];
+
+    if let Some(message) = cli.message {
+        messages.push(ChatMessage::user(message));
+    }
+
+    let chat_req = ChatRequest::new(messages);
 
     let client = Client::default();
 
     let print_options = PrintChatStreamOptions::from_print_events(false);
 
     let adapter_kind = client
-        .resolve_service_target(&app_config.model)?
+        .resolve_service_target(&app_config.model).await?
         .model
         .adapter_kind;
 
