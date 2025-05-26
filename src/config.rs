@@ -32,7 +32,7 @@ pub fn load_config() -> Result<AppConfig, Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     // Determine config file path
-    let project_dirs = ProjectDirs::from("com", "madfox", "autocommit")
+    let project_dirs = ProjectDirs::from("dev", "xmadfox", "madcommit")
         .ok_or("Could not determine project directories")?;
     let config_dir = project_dirs.config_dir();
     let config_file_path = config_dir.join("config.toml");
