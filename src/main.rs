@@ -22,12 +22,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let repo = Repository::open("./")?;
 
+    let history = git::get_commit_history(&repo)?;
+    log::info!("history: {history:?}");
     let diff_string = git::get_pretty_diff(&repo, 3)?;
 
     let template = fs::read_to_string(&app_config.template_path)?;
 
     let mut messages = vec![
         ChatMessage::system(template),
+        ChatMessage::system(format!("Here's summary of last commits for context:\n{}", history.join("\n"))),
         ChatMessage::user(&diff_string),
     ];
 

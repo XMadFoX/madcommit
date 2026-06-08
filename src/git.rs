@@ -16,6 +16,29 @@ pub fn get_pretty_diff(repo: &Repository, context_lines: u32) -> Result<String, 
     let head_commit = head.peel_to_commit()?;
     // Retrieve the tree associated with the HEAD commit
     let head_tree = head_commit.tree()?;
+    // throw if no files
+    let mut opts = (git2::StatusOptions::new());
+    let statuses = repo.statuses(Some(&mut opts))?;
+    for status in statuses.iter() {
+        log::debug!("status: {:?} {}", status.status(), status.path().unwrap());
+        if status.status() == git2::Status::WT_NEW {
+            log::warn!("No files in the repository");
+            return Ok(output);
+        }
+    }
+    let has_staged = statuses.iter().any(|entry| {
+    let s = entry.status();
+    // check any “index” flag, e.g. added / modified / deleted in index
+    s.contains(git2::Status::INDEX_NEW)
+    || s.contains(git2::Status::INDEX_MODIFIED)
+    || s.contains(git2::Status::INDEX_DELETED)
+    || s.contains(git2::Status::INDEX_RENAMED)
+    || s.contains(git2::Status::INDEX_TYPECHANGE)
+});
+    if !has_staged {
+        log::warn!("No changes added");
+        return Err(Error::from_str("No changes added"));
+    }
 
     // Create diff options
     let mut diff_options = DiffOptions::new();
