@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::process::Command;
 
-use git2::{DiffOptions, Error, Repository, Signature};
+use git2::{Commit, DiffOptions, Error, Repository, Signature};
 use tempfile::NamedTempFile;
 
 /// Gets a formatted diff from the git repository
@@ -117,4 +117,24 @@ pub fn create_commit(
     )?;
 
     Ok(())
+}
+
+pub fn get_commit_history(repo: &Repository) -> Result<Vec<String>, Error> {
+    let mut revwalk = repo.revwalk()?;
+    let MAX_LEN = 10;
+    revwalk.push_head()?;
+    revwalk.set_sorting(git2::Sort::TIME)?;
+    let mut commits = vec![];
+    for (idx, oid_result) in revwalk.into_iter().enumerate() {
+        log::debug!("idx: {idx}");
+        if idx >= MAX_LEN {
+            break;
+        }
+        let oid = oid_result?;
+        let commit = repo.find_commit(oid)?;
+        if let Some(msg) = commit.message() {
+            commits.push(msg.to_string());
+        }
+    }
+    Ok(commits)
 }
