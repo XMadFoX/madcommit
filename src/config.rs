@@ -2,7 +2,6 @@ use ::config::{Config, File};
 use clap::{Parser, ValueEnum};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
-use toml;
 
 #[derive(Debug, Deserialize, Serialize, Clone, ValueEnum)]
 pub enum OutputFormat {
@@ -15,6 +14,7 @@ pub struct AppConfig {
     pub model: String,
     pub template_path: String,
     pub output_format: OutputFormat,
+    pub endpoint: String,
 }
 
 impl Default for AppConfig {
@@ -23,6 +23,7 @@ impl Default for AppConfig {
             model: "gpt-4.1-nano".to_string(),
             template_path: "template.md".to_string(),
             output_format: OutputFormat::GitInteractiveCommit,
+            endpoint: "https://api.openai.com/v1/".to_string(),
         }
     }
 }
@@ -35,6 +36,9 @@ pub struct Cli {
 
     #[arg(long)]
     pub model: Option<String>,
+
+    #[arg(long, help = "OpenAI-compatible API endpoint")]
+    pub endpoint: Option<String>,
 
     #[arg(short, long, value_enum)]
     pub output: Option<OutputFormat>,
@@ -77,6 +81,9 @@ pub fn load_config(cli: &Cli) -> Result<AppConfig, Box<dyn std::error::Error>> {
     }
     if let Some(model) = &cli.model {
         app_config.model = model.clone();
+    }
+    if let Some(endpoint) = &cli.endpoint {
+        app_config.endpoint = endpoint.clone();
     }
     if let Some(output_format) = &cli.output {
         app_config.output_format = output_format.clone();
