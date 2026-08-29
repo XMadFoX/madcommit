@@ -28,13 +28,13 @@
         in
         pkgs.rustPlatform.buildRustPackage {
           pname = "madcommit";
-          version = "0.1.1";
+          version = "0.2.0";
 
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
 
           nativeBuildInputs = with pkgs; [ pkg-config ];
-          buildInputs = with pkgs; [ openssl ];
+          buildInputs = with pkgs; [ openssl ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ dbus ];
 
           postPatch = ''
             substituteInPlace src/config.rs \
@@ -76,18 +76,21 @@
         in
         {
           default = pkgs.mkShell {
-            packages = with pkgs; [
-              cargo
-              rustc
-              clippy
-              rust-analyzer
-              rustfmt
-              git
-              toybox
-              openssl
-              pkg-config
-              gcc
-            ];
+            packages =
+              with pkgs;
+              [
+                cargo
+                rustc
+                clippy
+                rust-analyzer
+                rustfmt
+                git
+                toybox
+                openssl
+                pkg-config
+                gcc
+              ]
+              ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ dbus ];
 
             RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
             RUSTFLAGS = "-C link-arg=-Wl,-rpath=${libPath}";

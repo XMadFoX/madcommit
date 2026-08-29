@@ -1,5 +1,5 @@
 use ::config::{Config, File};
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +37,7 @@ pub struct Cli {
     #[arg(long)]
     pub model: Option<String>,
 
-    #[arg(long, help = "OpenAI-compatible API endpoint")]
+    #[arg(long, help = "OpenAI-compatible API endpoint", global = true)]
     pub endpoint: Option<String>,
 
     #[arg(short, long, value_enum)]
@@ -49,6 +49,28 @@ pub struct Cli {
         help = "Custom context to help AI generate a better commit message"
     )]
     pub message: Option<String>,
+
+    #[command(subcommand)]
+    pub command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Manage stored API credentials
+    Auth {
+        #[command(subcommand)]
+        action: AuthAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AuthAction {
+    /// Validate an API key and store it in the system keyring
+    Login,
+    /// Show whether a key is stored for the current endpoint (never prints the key)
+    Status,
+    /// Delete the stored key for the current endpoint
+    Logout,
 }
 
 pub fn load_config(cli: &Cli) -> Result<AppConfig, Box<dyn std::error::Error>> {
