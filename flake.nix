@@ -34,6 +34,7 @@
           cargoLock.lockFile = ./Cargo.lock;
 
           nativeBuildInputs = with pkgs; [ pkg-config ];
+          nativeCheckInputs = with pkgs; [ cacert ];
           buildInputs = with pkgs; [ openssl ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ dbus ];
 
           postPatch = ''
