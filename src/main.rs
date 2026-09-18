@@ -1,4 +1,3 @@
-use std::fs;
 use std::process::ExitCode;
 
 use git2::Repository;
@@ -7,6 +6,7 @@ mod auth;
 mod config;
 mod endpoint;
 mod git;
+mod template;
 
 use clap::Parser;
 use config::{AuthAction, Cli, Command, OutputFormat};
@@ -34,7 +34,8 @@ async fn main() -> ExitCode {
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    let app_config = config::load_config(&cli)?;
+    let loaded_config = config::load_config(&cli)?;
+    let app_config = loaded_config.app_config;
     let endpoint = normalize_endpoint(&app_config.endpoint)?;
     let store = KeyringStore;
     let prompter = StdPrompter;
@@ -49,13 +50,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let repo = Repository::open("./")?;
+    let repo = Repository::discover(".")?;
 
     let history = git::get_commit_history(&repo)?;
     log::info!("history: {history:?}");
     let diff_string = git::get_pretty_diff(&repo, 3)?;
 
-    let template = fs::read_to_string(&app_config.template_path)?;
+    let template = template::load_template(&loaded_config.template_source, &repo)?;
 
     let mut messages = vec![
         ChatMessage::system(template),

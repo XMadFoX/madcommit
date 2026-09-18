@@ -37,16 +37,6 @@
           nativeCheckInputs = with pkgs; [ cacert ];
           buildInputs = with pkgs; [ openssl ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ dbus ];
 
-          postPatch = ''
-            substituteInPlace src/config.rs \
-              --replace-fail 'template_path: "template.md".to_string()' \
-                             'template_path: "'"$out"'/share/madcommit/template.md".to_string()'
-          '';
-
-          postInstall = ''
-            install -Dm644 template.md $out/share/madcommit/template.md
-          '';
-
           OPENSSL_NO_VENDOR = "1";
         };
     in
