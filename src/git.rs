@@ -14,13 +14,6 @@ pub fn get_pretty_diff(repo: &Repository, context_lines: u32) -> Result<String, 
     let head_tree = head_commit.tree()?;
     let mut status_options = git2::StatusOptions::new();
     let statuses = repo.statuses(Some(&mut status_options))?;
-    for status in statuses.iter() {
-        log::debug!("status: {:?} {}", status.status(), status.path().unwrap());
-        if status.status() == git2::Status::WT_NEW {
-            log::warn!("No files in the repository");
-            return Ok(output);
-        }
-    }
     let has_staged = statuses.iter().any(|entry| {
         let status = entry.status();
         status.contains(git2::Status::INDEX_NEW)
