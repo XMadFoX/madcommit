@@ -2,16 +2,13 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::process::Command;
 
-use git2::{Commit, DiffOptions, Error, Repository, Signature};
+use git2::{Commit, DiffOptions, Error, ErrorCode, Repository, Signature};
 use tempfile::NamedTempFile;
 
 /// Gets a formatted diff from the git repository.
 pub fn get_pretty_diff(repo: &Repository, context_lines: u32) -> Result<String, Error> {
     let mut output = String::new();
     let index = repo.index()?;
-    let head = repo.head()?;
-    let head_commit = head.peel_to_commit()?;
-    let head_tree = head_commit.tree()?;
     let mut status_options = git2::StatusOptions::new();
     let statuses = repo.statuses(Some(&mut status_options))?;
     let has_staged = statuses.iter().any(|entry| {
@@ -27,6 +24,8 @@ pub fn get_pretty_diff(repo: &Repository, context_lines: u32) -> Result<String, 
         return Err(Error::from_str("No changes added"));
     }
 
+    let head_tree = head_commit(repo)?.map(|commit| commit.tree()).transpose()?;
+
     let mut diff_options = DiffOptions::new();
     diff_options
         .context_lines(context_lines)
@@ -36,7 +35,8 @@ pub fn get_pretty_diff(repo: &Repository, context_lines: u32) -> Result<String, 
         .patience(true)
         .minimal(true);
 
-    let diff = repo.diff_tree_to_index(Some(&head_tree), Some(&index), Some(&mut diff_options))?;
+    let diff =
+        repo.diff_tree_to_index(head_tree.as_ref(), Some(&index), Some(&mut diff_options))?;
     let mut current_file: Option<String> = None;
 
     diff.print(git2::DiffFormat::Patch, |delta, _hunk, line| {
@@ -99,9 +99,9 @@ pub fn create_commit(
 
     let oid = index.write_tree()?;
     let tree = repo.find_tree(oid)?;
-    let head = repo.head()?;
-    let parent_commit = head.peel_to_commit()?;
     let signature = get_default_signature(repo)?;
+    let parent = head_commit(repo)?;
+    let parents: Vec<&Commit<'_>> = parent.iter().collect();
 
     repo.commit(
         Some("HEAD"),
@@ -109,16 +109,28 @@ pub fn create_commit(
         &signature,
         commit_message,
         &tree,
-        &[&parent_commit],
+        &parents,
     )?;
 
     Ok(())
 }
 
+/// Returns the HEAD commit, or `None` when HEAD points at a branch with no commits yet.
+fn head_commit(repo: &Repository) -> Result<Option<Commit<'_>>, Error> {
+    match repo.head() {
+        Ok(head) => head.peel_to_commit().map(Some),
+        Err(error) if error.code() == ErrorCode::UnbornBranch => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
 pub fn get_commit_history(repo: &Repository) -> Result<Vec<String>, Error> {
+    let Some(head) = head_commit(repo)? else {
+        return Ok(Vec::new());
+    };
     let mut revwalk = repo.revwalk()?;
     let MAX_LEN = 10;
-    revwalk.push_head()?;
+    revwalk.push(head.id())?;
     revwalk.set_sorting(git2::Sort::TIME)?;
     let mut commits = vec![];
     for (idx, oid_result) in revwalk.into_iter().enumerate() {
@@ -133,4 +145,52 @@ pub fn get_commit_history(repo: &Repository) -> Result<Vec<String>, Error> {
         }
     }
     Ok(commits)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::Path;
+
+    use git2::Repository;
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn unborn_repositories_have_empty_history() {
+        let temp = tempdir().unwrap();
+        let repo = Repository::init(temp.path()).unwrap();
+
+        assert!(get_commit_history(&repo).unwrap().is_empty());
+    }
+
+    #[test]
+    fn first_commit_uses_the_staged_diff_and_has_no_parents() {
+        let temp = tempdir().unwrap();
+        let repo = Repository::init(temp.path()).unwrap();
+        repo.config()
+            .unwrap()
+            .set_str("user.name", "Test User")
+            .unwrap();
+        repo.config()
+            .unwrap()
+            .set_str("user.email", "test@example.com")
+            .unwrap();
+        fs::write(temp.path().join("first.txt"), "first commit\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("first.txt")).unwrap();
+        index.write().unwrap();
+        fs::write(temp.path().join("untracked.txt"), "untracked\n").unwrap();
+
+        assert!(get_pretty_diff(&repo, 3).unwrap().contains("first commit"));
+        create_commit(&repo, "feat: initial commit").unwrap();
+
+        let commit = repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(commit.parent_count(), 0);
+        assert_eq!(
+            get_commit_history(&repo).unwrap(),
+            vec!["feat: initial commit"]
+        );
+    }
 }
