@@ -124,26 +124,32 @@ fn head_commit(repo: &Repository) -> Result<Option<Commit<'_>>, Error> {
     }
 }
 
+/// Returns up to ten recent non-merge commit messages for style examples.
 pub fn get_commit_history(repo: &Repository) -> Result<Vec<String>, Error> {
+    const MAX_COMMITS: usize = 10;
+    const MAX_TRAVERSED_COMMITS: usize = 100;
+
     let Some(head) = head_commit(repo)? else {
         return Ok(Vec::new());
     };
     let mut revwalk = repo.revwalk()?;
-    let MAX_LEN = 10;
     revwalk.push(head.id())?;
     revwalk.set_sorting(git2::Sort::TIME)?;
-    let mut commits = vec![];
-    for (idx, oid_result) in revwalk.into_iter().enumerate() {
-        log::debug!("idx: {idx}");
-        if idx >= MAX_LEN {
+
+    let mut commits = Vec::with_capacity(MAX_COMMITS);
+    for oid_result in revwalk.take(MAX_TRAVERSED_COMMITS) {
+        let commit = repo.find_commit(oid_result?)?;
+        if commit.parent_count() > 1 {
+            continue;
+        }
+        if let Some(message) = commit.message() {
+            commits.push(message.to_string());
+        }
+        if commits.len() == MAX_COMMITS {
             break;
         }
-        let oid = oid_result?;
-        let commit = repo.find_commit(oid)?;
-        if let Some(msg) = commit.message() {
-            commits.push(msg.to_string());
-        }
     }
+
     Ok(commits)
 }
 
@@ -152,10 +158,39 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use git2::Repository;
+    use git2::{Commit, Repository, Signature};
     use tempfile::tempdir;
 
     use super::*;
+
+    fn signature() -> Signature<'static> {
+        Signature::now("Test User", "test@example.com").unwrap()
+    }
+
+    fn commit_file(
+        repo: &Repository,
+        name: &str,
+        content: &str,
+        parents: &[&Commit<'_>],
+    ) -> git2::Oid {
+        let workdir = repo.workdir().unwrap();
+        fs::write(workdir.join(name), content).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(name)).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let signature = signature();
+        repo.commit(
+            None,
+            &signature,
+            &signature,
+            &format!("test: add {name}"),
+            &tree,
+            parents,
+        )
+        .unwrap()
+    }
 
     #[test]
     fn unborn_repositories_have_empty_history() {
@@ -192,5 +227,26 @@ mod tests {
             get_commit_history(&repo).unwrap(),
             vec!["feat: initial commit"]
         );
+    }
+
+    #[test]
+    fn history_skips_merge_commits() {
+        let temp = tempdir().unwrap();
+        let repo = Repository::init(temp.path()).unwrap();
+        let first = commit_file(&repo, "first.txt", "first", &[]);
+        let first_commit = repo.find_commit(first).unwrap();
+        let second = commit_file(&repo, "second.txt", "second", &[&first_commit]);
+        let second_commit = repo.find_commit(second).unwrap();
+        let side = commit_file(&repo, "side.txt", "side", &[&first_commit]);
+        let side_commit = repo.find_commit(side).unwrap();
+
+        let merge = commit_file(&repo, "merge.txt", "merge", &[&second_commit, &side_commit]);
+        repo.reference("refs/heads/master", merge, true, "test merge")
+            .unwrap();
+        repo.set_head("refs/heads/master").unwrap();
+
+        let history = get_commit_history(&repo).unwrap();
+        assert_eq!(history.len(), 3);
+        assert!(history.iter().all(|message| !message.contains("merge")));
     }
 }
