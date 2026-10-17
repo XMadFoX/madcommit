@@ -28,7 +28,7 @@
         in
         pkgs.rustPlatform.buildRustPackage {
           pname = "madcommit";
-          version = "0.2.0";
+          version = (pkgs.lib.importTOML ./Cargo.toml).package.version;
 
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
