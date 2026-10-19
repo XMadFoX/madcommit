@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::process::ExitCode;
 
 use git2::Repository;
@@ -87,9 +88,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
     log::debug!("Received commit message ({} bytes)", commit_msg.len());
     match app_config.output_format {
-        OutputFormat::Plain => {
-            // already streamed
-        }
+        OutputFormat::Plain => writeln!(std::io::stdout(), "{}", commit_msg.trim_end())?,
         OutputFormat::GitInteractiveCommit => {
             let commit_message = git::get_commit_message_interactively(&commit_msg)?;
             git::create_commit(&repo, &commit_message)?;
