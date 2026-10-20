@@ -3,6 +3,9 @@ name = "madcommit"
 version = "0.3.0"
 edition = "2021"
 
+[profile.release]
+strip = true
+
 [dependencies]
 config = "0.15.9"
 directories = "6.0.0"
