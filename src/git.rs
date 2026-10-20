@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::process::Command;
 
 use git2::{Commit, DiffOptions, Error, ErrorCode, Repository, Signature};
@@ -37,25 +38,45 @@ pub fn get_pretty_diff(repo: &Repository, context_lines: u32) -> Result<String, 
 
     let diff =
         repo.diff_tree_to_index(head_tree.as_ref(), Some(&index), Some(&mut diff_options))?;
-    let mut current_file: Option<String> = None;
+    let mut current_file: Option<PathBuf> = None;
+    // Where the current delta's lines start in `output`, so a binary delta can be rolled back.
+    let mut delta_start = 0;
+    let mut binary = false;
 
     diff.print(git2::DiffFormat::Patch, |delta, _hunk, line| {
-        let line_content = String::from_utf8_lossy(line.content());
-
-        if let Some(path) = delta.new_file().path() {
-            let path_str = path.to_string_lossy().to_string();
-            if current_file.as_ref() != Some(&path_str) {
-                current_file = Some(path_str);
-                output.push_str(&format!("\npath: {}\n", path.display()));
+        // 'F' opens every delta; a typechange is two deltas with the same path.
+        if line.origin() == 'F' {
+            binary = false;
+            if let Some(path) = delta.new_file().path() {
+                if current_file.as_deref() != Some(path) {
+                    output.push_str(&format!("\npath: {}\n", path.display()));
+                    current_file = Some(path.to_path_buf());
+                }
             }
+            delta_start = output.len();
+            return true;
         }
-        match line.origin() {
-            '+' | '-' | ' ' => {
-                output.push(line.origin());
-                output.push(' ');
-                output.push_str(&line_content);
-            }
-            _ => {}
+        if binary {
+            return true;
+        }
+        let is_binary = match line.origin() {
+            '+' | '-' | ' ' => match std::str::from_utf8(line.content()) {
+                Ok(text) => {
+                    output.push(line.origin());
+                    output.push(' ');
+                    output.push_str(text);
+                    false
+                }
+                // libgit2 only flags files with NUL bytes; other non-UTF-8 content is binary too.
+                Err(_) => true,
+            },
+            'B' => true,
+            _ => false,
+        };
+        if is_binary {
+            binary = true;
+            output.truncate(delta_start);
+            output.push_str("(binary file, contents omitted)\n");
         }
         true
     })?;
@@ -248,5 +269,49 @@ mod tests {
         let history = get_commit_history(&repo).unwrap();
         assert_eq!(history.len(), 3);
         assert!(history.iter().all(|message| !message.contains("merge")));
+    }
+
+    #[test]
+    fn binary_files_are_listed_without_contents() {
+        let temp = tempdir().unwrap();
+        let repo = Repository::init(temp.path()).unwrap();
+        let files: [(&str, &[u8]); 3] = [
+            ("text.txt", b"hello\n"),
+            ("nul.dat", b"PNG\0\0data\n"),
+            ("latin1.txt", b"caf\xe9\xff\xfe\n"),
+        ];
+        let mut index = repo.index().unwrap();
+        for (name, content) in files {
+            fs::write(temp.path().join(name), content).unwrap();
+            index.add_path(Path::new(name)).unwrap();
+        }
+        index.write().unwrap();
+
+        let diff = get_pretty_diff(&repo, 3).unwrap();
+        assert_eq!(
+            diff,
+            "\npath: latin1.txt\n(binary file, contents omitted)\n\
+             \npath: nul.dat\n(binary file, contents omitted)\n\
+             \npath: text.txt\n+ hello\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn binary_flag_does_not_leak_into_typechange_of_same_path() {
+        let temp = tempdir().unwrap();
+        let repo = Repository::init(temp.path()).unwrap();
+        let oid = commit_file(&repo, "x", "\0", &[]);
+        repo.set_head_detached(oid).unwrap();
+        fs::remove_file(temp.path().join("x")).unwrap();
+        std::os::unix::fs::symlink("target", temp.path().join("x")).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("x")).unwrap();
+        index.write().unwrap();
+
+        assert_eq!(
+            get_pretty_diff(&repo, 3).unwrap(),
+            "\npath: x\n(binary file, contents omitted)\n+ target"
+        );
     }
 }
